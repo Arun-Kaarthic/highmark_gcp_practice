@@ -1,0 +1,19 @@
+{
+  "image": "__IMAGE__",
+  "metadata": {
+    "name": "CPR Kafka CDC to GCS Raw (Python)",
+    "description": "Consumes CPR CDC JSON from Kafka and writes windowed JSONL to GCS Raw.",
+    "parameters": [
+      {"name":"kafka_bootstrap","label":"Kafka brokers","helpText":"host:port[,host:port]"},
+      {"name":"kafka_topic","label":"Kafka topic","helpText":"CPR CDC topic"},
+      {"name":"kafka_group","label":"Kafka group","helpText":"Kafka consumer group","isOptional":true},
+      {"name":"raw_prefix","label":"Raw GCS prefix","helpText":"gs://bucket/cdc"},
+      {"name":"window_seconds","label":"Window seconds","helpText":"Output file window duration","isOptional":true},
+      {"name":"kafka_security_protocol","label":"Security protocol","helpText":"PLAINTEXT or SASL_SSL","isOptional":true},
+      {"name":"kafka_sasl_mechanism","label":"SASL mechanism","helpText":"PLAIN or SCRAM-SHA-512","isOptional":true},
+      {"name":"kafka_username","label":"Kafka username","helpText":"Use only for nonproduction demonstrations","isOptional":true},
+      {"name":"kafka_password","label":"Kafka password","helpText":"Do not supply passwords as template parameters in production","isOptional":true}
+    ]
+  },
+  "sdkInfo": {"language":"PYTHON"}
+}
