@@ -1,1 +1,14 @@
-{"event_id":"evt-001","source":"CPR","table":"manufacturing_orders","operation":"UPDATE","primary_key":"ORD1001","before":{"status":"PENDING"},"after":{"status":"COMPLETED"},"event_timestamp":"2026-10-09T10:30:00Z"}
+{
+    "after": {
+        "status": "COMPLETED"
+    },
+    "before": {
+        "status": "PENDING"
+    },
+    "event_id": "evt-001",
+    "event_timestamp": "2026-10-09T10:30:00Z",
+    "operation": "UPDATE",
+    "primary_key": "ORD1001",
+    "source": "CPR",
+    "table": "manufacturing_orders"
+}

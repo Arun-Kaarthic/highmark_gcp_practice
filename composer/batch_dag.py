@@ -7,7 +7,7 @@ from airflow.providers.google.cloud.operators.cloud_run import CloudRunExecuteJo
 with DAG(
     dag_id="cpr_batch_to_raw",
     start_date=datetime(2026, 10, 1, tzinfo=timezone.utc),
-    schedule="0 2 * * *",
+    schedule=None,
     catchup=False,
     max_active_runs=1,
     default_args={"retries": 2, "retry_delay": timedelta(minutes=5)},
