@@ -67,6 +67,7 @@ def run():
                 quote_character='"',
                 encoding="UTF-8",
                 allow_quoted_newlines=True,
+                column_name_character_map="V2",
                 write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
                 create_disposition=bigquery.CreateDisposition.CREATE_IF_NEEDED,
             )
