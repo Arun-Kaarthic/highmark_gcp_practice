@@ -63,9 +63,12 @@ def run():
                 source_format=bigquery.SourceFormat.CSV,
                 skip_leading_rows=1,
                 autodetect=True,
+                field_delimiter=",",
+                quote_character='"',
+                encoding="UTF-8",
+                allow_quoted_newlines=True,
                 write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
                 create_disposition=bigquery.CreateDisposition.CREATE_IF_NEEDED,
-                allow_quoted_newlines=True,
             )
             # BigQuery load jobs take GCS object paths, not generation-specific URIs.
             # Require source objects to be immutable during processing.
