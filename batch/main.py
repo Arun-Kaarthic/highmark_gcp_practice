@@ -43,7 +43,8 @@ def run():
     gcs = storage.Client(project=PROJECT_ID)
     bq = bigquery.Client(project=PROJECT_ID)
     dataset = f'{PROJECT_ID}.{BQ_DATASET}'
-    bq.create_dataset(bigquery.Dataset(dataset), exists_ok=True)
+    # bq.create_dataset(bigquery.Dataset(dataset), exists_ok=True)
+    bq.get_dataset(dataset)
     found = loaded = skipped = 0
     errors = []
     for item in gcs.list_blobs(LANDING_BUCKET, prefix=LANDING_PREFIX):
