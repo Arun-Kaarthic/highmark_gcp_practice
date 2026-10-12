@@ -14,9 +14,9 @@ with DAG(
     tags=["cpr", "batch", "raw"],
 ) as dag:
     ingest = CloudRunExecuteJobOperator(
-        task_id="validate_profile_copy_to_raw",
-        project_id=os.environ["PROJECT_ID"],
-        region=os.environ["REGION"],
-        job_name=os.environ["BATCH_JOB"],
+        task_id="ingest_csv_to_bigquery",
+        project_id="gcp-practice-for-highmark",
+        region="us-central1",
+        job_name="cpr-gcs-to-bigquery",
         deferrable=False,
     )

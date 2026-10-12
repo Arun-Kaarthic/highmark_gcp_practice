@@ -1,94 +1,91 @@
-"""CPR batch adapter: profile landed CSVs and copy immutable source versions into Raw."""
+"""Cloud Run Job: GCS Landing CSV -> BigQuery Bronze (one table per CSV stem).
+
+Assumptions:
+- Files are incremental APPENDS, not full monthly snapshots.
+- CSV headers are stable per logical table.
+- For production, use an explicit schema registry for IDs/dates and schema changes.
+"""
 import csv
 import hashlib
-import io
-import json
 import logging
 import os
 import re
-from datetime import datetime, timezone
-from google.api_core.exceptions import PreconditionFailed
-from google.cloud import storage
+from google.cloud import bigquery, storage
+from google.api_core.exceptions import Conflict
 
 logging.basicConfig(level=logging.INFO)
+PROJECT_ID = os.environ.get('GCP_PROJECT_ID') or os.environ.get('GOOGLE_CLOUD_PROJECT')
+LANDING_BUCKET = os.environ['LANDING_BUCKET']
+LANDING_PREFIX = os.getenv('LANDING_PREFIX', '')
+BQ_DATASET = os.getenv('BQ_DATASET', 'bronze')
+BQ_LOCATION = os.getenv('BQ_LOCATION', 'us-central1')
 
-LANDING_BUCKET = os.environ["LANDING_BUCKET"]
-RAW_BUCKET = os.environ["RAW_BUCKET"]
-LANDING_PREFIX = os.getenv("LANDING_PREFIX", "monthly/")
+
+def table_name(object_name):
+    stem = object_name.rsplit('/', 1)[-1].rsplit('.', 1)[0]
+    safe = re.sub(r'[^a-zA-Z0-9_]', '_', stem).lower().strip('_')
+    if not safe:
+        raise ValueError(f'Cannot derive table name from {object_name}')
+    return ('t_' + safe) if safe[0].isdigit() else safe
 
 
-def profile_csv(blob):
-    # Streaming read: do not load entire file into memory.
-    with blob.open("rt", encoding="utf-8-sig", newline="") as stream:
-        reader = csv.reader(stream)
-        header = next(reader, None)
-        if not header:
-            raise ValueError(f"Empty CSV: {blob.name}")
-        if len(header) != len(set(header)) or any(not h.strip() for h in header):
-            raise ValueError(f"Invalid/duplicate headers: {blob.name}")
-        count = 0
-        for row in reader:
-            if len(row) != len(header):
-                raise ValueError(f"Column mismatch at data row {count + 1}: {blob.name}")
-            count += 1
-    return {"columns": header, "column_count": len(header), "data_rows": count}
+def validate_header(blob):
+    with blob.open('rt', encoding='utf-8-sig', newline='') as handle:
+        header = next(csv.reader(handle), None)
+    if not header or any(not h.strip() for h in header) or len(header) != len(set(header)):
+        raise ValueError(f'Invalid header: {blob.name}')
+    return header
 
 
 def run():
-    client = storage.Client()
-    source_bucket = client.bucket(LANDING_BUCKET)
-    raw_bucket = client.bucket(RAW_BUCKET)
+    if not PROJECT_ID:
+        raise ValueError('Set GCP_PROJECT_ID')
+    gcs = storage.Client(project=PROJECT_ID)
+    bq = bigquery.Client(project=PROJECT_ID)
+    dataset = f'{PROJECT_ID}.{BQ_DATASET}'
+    bq.create_dataset(bigquery.Dataset(dataset), exists_ok=True)
+    found = loaded = skipped = 0
     errors = []
-    processed = 0
-    for item in client.list_blobs(LANDING_BUCKET, prefix=LANDING_PREFIX):
-        if not item.name.lower().endswith(".csv"):
+    for item in gcs.list_blobs(LANDING_BUCKET, prefix=LANDING_PREFIX):
+        if not item.name.lower().endswith('.csv'):
             continue
-        # Pin the source generation for metadata and copy. Versioning or source immutability recommended.
-        source = source_bucket.blob(item.name, generation=item.generation)
-        version = str(item.generation)
-        raw_name = f"batch/{item.name}.generation-{version}.csv"
-        target = raw_bucket.blob(raw_name)
+        found += 1
         try:
-            if target.exists():
-                logging.info("Already copied %s", raw_name)
-                continue
-            stats = profile_csv(source)
-            # Server-side copy with destination creation precondition and source generation precondition.
+            # Re-read immutable generation, and use deterministic BigQuery job ID
+            blob = gcs.bucket(LANDING_BUCKET).blob(item.name, generation=item.generation)
+            validate_header(blob)
+            table = f'{dataset}.{table_name(item.name)}'
+            identity = f'{LANDING_BUCKET}/{item.name}#{item.generation}'
+            digest = hashlib.sha256(identity.encode()).hexdigest()[:32]
+            job_id = f'cpr_load_{digest}'
+            config = bigquery.LoadJobConfig(
+                source_format=bigquery.SourceFormat.CSV,
+                skip_leading_rows=1,
+                autodetect=True,
+                write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+                create_disposition=bigquery.CreateDisposition.CREATE_IF_NEEDED,
+                allow_quoted_newlines=True,
+            )
+            # BigQuery load jobs take GCS object paths, not generation-specific URIs.
+            # Require source objects to be immutable during processing.
+            uri = f'gs://{LANDING_BUCKET}/{item.name}'
             try:
-                source_bucket.copy_blob(
-                    source, raw_bucket, new_name=raw_name,
-                    if_generation_match=0,
-                    if_source_generation_match=int(version),
-                )
-            except PreconditionFailed:
-                if not target.exists():
-                    raise
-            meta = {
-                "source_bucket": LANDING_BUCKET,
-                "source_object": item.name,
-                "source_generation": version,
-                "raw_uri": f"gs://{RAW_BUCKET}/{raw_name}",
-                "size_bytes": item.size,
-                "content_type": item.content_type,
-                "updated": item.updated.isoformat() if item.updated else None,
-                "profile": stats,
-                "processed_at": datetime.now(timezone.utc).isoformat(),
-            }
-            audit_name = f"metadata/batch/{hashlib.sha256((item.name + ':' + version).encode()).hexdigest()}.json"
-            audit = raw_bucket.blob(audit_name)
-            try:
-                audit.upload_from_string(json.dumps(meta), content_type="application/json", if_generation_match=0)
-            except PreconditionFailed:
-                pass
-            processed += 1
-            logging.info("COPIED %s -> %s rows=%d", item.name, raw_name, stats["data_rows"])
+                job = bq.load_table_from_uri(uri, table, job_config=config,
+                                             job_id=job_id, location=BQ_LOCATION)
+            except Conflict:
+                job = bq.get_job(job_id, location=BQ_LOCATION)
+            job.result()
+            # Reusing a successful deterministic job ID does not append again.
+            loaded += 1
+            logging.info('LOAD OK %s -> %s job=%s rows=%s', uri, table, job_id, job.output_rows)
         except Exception as exc:
-            logging.exception("Failed processing %s", item.name)
-            errors.append({"file": item.name, "error": str(exc)})
-    logging.info("Processed %d files; failures=%d", processed, len(errors))
+            logging.exception('LOAD FAILED: %s', item.name)
+            errors.append(f'{item.name}: {exc}')
+    logging.info('CSV found=%d completed_or_existing_jobs=%d failures=%d', found, loaded, len(errors))
+    if found == 0:
+        raise RuntimeError(f'No CSV files found in gs://{LANDING_BUCKET}/{LANDING_PREFIX}')
     if errors:
-        raise RuntimeError(json.dumps(errors))
+        raise RuntimeError('; '.join(errors))
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     run()
