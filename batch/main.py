@@ -56,9 +56,15 @@ def run():
             blob = gcs.bucket(LANDING_BUCKET).blob(item.name, generation=item.generation)
             validate_header(blob)
             table = f'{dataset}.{table_name(item.name)}'
-            identity = f'{LANDING_BUCKET}/{item.name}#{item.generation}'
+            LOAD_CONFIG_VERSION = "v2"
+
+            identity = (
+                f"{LANDING_BUCKET}/{item.name}"
+                f"#{item.generation}#{LOAD_CONFIG_VERSION}"
+            )
+
             digest = hashlib.sha256(identity.encode()).hexdigest()[:32]
-            job_id = f'cpr_load_{digest}'
+            job_id = f"cpr_load_{digest}"
             config = bigquery.LoadJobConfig(
                 source_format=bigquery.SourceFormat.CSV,
                 skip_leading_rows=1,
