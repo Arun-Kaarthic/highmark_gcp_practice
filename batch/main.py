@@ -74,6 +74,7 @@ def run():
                 encoding="UTF-8",
                 allow_quoted_newlines=True,
                 column_name_character_map="V2",
+                timestamp_format="DD-MM-YYYY HH24:MI:SS",
                 write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
                 create_disposition=bigquery.CreateDisposition.CREATE_IF_NEEDED,
             )
