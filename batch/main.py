@@ -56,7 +56,7 @@ def run():
             blob = gcs.bucket(LANDING_BUCKET).blob(item.name, generation=item.generation)
             validate_header(blob)
             table = f'{dataset}.{table_name(item.name)}'
-            LOAD_CONFIG_VERSION = "v2"
+            LOAD_CONFIG_VERSION = "v3"
 
             identity = (
                 f"{LANDING_BUCKET}/{item.name}"
