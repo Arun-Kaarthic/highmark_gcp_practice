@@ -4,9 +4,10 @@ from pathlib import Path
 from airflow import DAG
 from airflow.providers.google.cloud.operators.cloud_run import CloudRunExecuteJobOperator
 from airflow.providers.google.cloud.operators.bigquery import BigQueryInsertJobOperator
+import os
 
-PROJECT_ID = "gcp-practice-for-highmark"
-REGION = "us-central1"
+PROJECT_ID = os.environ.get('GCP_PROJECT_ID')
+REGION = os.environ.get('REGION')
 DQ_SQL = (Path(__file__).parent / "bronze_all_tables_dq.sql").read_text(encoding="utf-8")
 
 with DAG(

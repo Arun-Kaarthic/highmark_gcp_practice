@@ -18,7 +18,7 @@ PROJECT_ID = os.environ.get('GCP_PROJECT_ID') or os.environ.get('GOOGLE_CLOUD_PR
 LANDING_BUCKET = os.environ['LANDING_BUCKET']
 LANDING_PREFIX = os.getenv('LANDING_PREFIX', '')
 BQ_DATASET = os.getenv('BQ_DATASET', 'bronze')
-BQ_LOCATION = os.getenv('BQ_LOCATION', 'us-central1')
+BQ_LOCATION = os.getenv('REGION', 'us-central1')
 
 
 def table_name(object_name):
